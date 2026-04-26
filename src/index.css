@@ -1,0 +1,113 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply bg-stone-950 text-white font-sans antialiased;
+    min-height: 100dvh;
+  }
+
+  #root {
+    @apply flex justify-center;
+    min-height: 100dvh;
+  }
+}
+
+@layer components {
+  .app-shell {
+    @apply w-full max-w-[390px] min-h-dvh relative overflow-hidden flex flex-col;
+    background: linear-gradient(160deg, #1c0a00 0%, #0f0f0f 50%, #0a0a1a 100%);
+  }
+
+  .glass {
+    @apply rounded-2xl border border-white/10;
+    background: rgba(255, 255, 255, 0.06);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+  }
+
+  .glass-strong {
+    @apply rounded-2xl border border-white/15;
+    background: rgba(255, 255, 255, 0.10);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+  }
+
+  .glass-orange {
+    @apply rounded-2xl border border-orange-500/30;
+    background: rgba(249, 115, 22, 0.12);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+  }
+
+  .btn-primary {
+    @apply bg-primary text-white font-semibold rounded-2xl px-6 py-4
+           active:scale-95 transition-all duration-150 shadow-lg
+           shadow-orange-500/25 hover:bg-primary-600;
+  }
+
+  .btn-ghost {
+    @apply glass text-white/80 font-medium rounded-2xl px-6 py-4
+           active:scale-95 transition-all duration-150;
+  }
+
+  .input-glass {
+    @apply glass w-full px-4 py-3 text-white placeholder-white/30
+           outline-none focus:border-primary/50 focus:ring-1
+           focus:ring-primary/30 transition-all duration-200 rounded-2xl;
+  }
+
+  .tag {
+    @apply glass text-sm text-white/70 px-3 py-1.5 rounded-xl cursor-pointer
+           active:scale-95 transition-all duration-150;
+  }
+
+  .tag-active {
+    @apply glass-orange text-primary font-medium text-sm px-3 py-1.5 rounded-xl
+           cursor-pointer active:scale-95 transition-all duration-150;
+  }
+
+  .section-label {
+    @apply text-xs font-semibold uppercase tracking-widest text-white/40 mb-3;
+  }
+
+  .page-scroll {
+    @apply flex-1 overflow-y-auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .page-scroll::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-gradient-to-r from-primary to-amber-400 bg-clip-text text-transparent;
+  }
+
+  .glow-orange {
+    box-shadow: 0 0 40px rgba(249, 115, 22, 0.2);
+  }
+
+  .min-h-dvh {
+    min-height: 100dvh;
+  }
+}
+
+/* Smooth page transitions */
+.page-enter {
+  opacity: 0;
+  transform: translateX(20px);
+}
+.page-enter-active {
+  opacity: 1;
+  transform: translateX(0);
+  transition: opacity 250ms ease, transform 250ms ease;
+}
