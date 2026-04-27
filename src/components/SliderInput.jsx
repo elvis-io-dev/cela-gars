@@ -28,7 +28,7 @@ export default function SliderInput({ label, value, onChange, min, max, step = 1
         />
         <div
           className="absolute top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-white border-2 border-orange-500 shadow-md shadow-orange-200/60 transition-all pointer-events-none"
-          style={{ left: `calc(${pct}% - 10px)` }}
+          style={{ left: `clamp(0px, calc(${pct}% - 10px), calc(100% - 20px))` }}
         />
       </div>
     </div>

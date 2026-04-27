@@ -6,9 +6,11 @@ import GlassCard from '../components/GlassCard'
 import LocationPhoto from '../components/LocationPhoto'
 import EventCard from '../components/EventCard'
 import { fetchLatviaEvents } from '../services/openai'
+import { fetchRigaWeather } from '../services/weather'
 import {
-  MapPin, Clock, Euro, Sun, Cloud, CloudRain,
-  Share2, RefreshCw, ChevronDown, ChevronUp, Zap,
+  MapPin, Clock, Euro, Sun, Cloud, CloudRain, Wind,
+  Droplets, Share2, RefreshCw, ChevronDown, ChevronUp,
+  Zap, TrendingUp, TrendingDown, Minus,
 } from 'lucide-react'
 
 /* ── Static route data ─────────────────────────────────────── */
@@ -66,15 +68,11 @@ const ACTIVITY_STOPS = [
   },
 ]
 
-/* ── Weather mock ──────────────────────────────────────────── */
-const WEATHER_TYPES = ['sunny', 'cloudy', 'rainy']
-const mockWeather = WEATHER_TYPES[Math.floor(Math.random() * WEATHER_TYPES.length)]
-const mockTemp    = Math.floor(Math.random() * 15) + 8
-
-const WeatherIcon = ({ type }) => {
-  if (type === 'sunny') return <Sun  size={15} className="text-amber-500" />
-  if (type === 'rainy') return <CloudRain size={15} className="text-blue-400" />
-  return <Cloud size={15} className="text-gray-400" />
+/* ── Weather icon helper ───────────────────────────────────── */
+const WeatherIcon = ({ condition, size = 15 }) => {
+  if (condition === 'sunny') return <Sun       size={size} className="text-amber-500" />
+  if (condition === 'rainy') return <CloudRain size={size} className="text-blue-400"  />
+  return                            <Cloud     size={size} className="text-gray-400"  />
 }
 
 /* ── Stop card ─────────────────────────────────────────────── */
@@ -169,12 +167,19 @@ export default function RouteResult() {
   const stops     = isDate ? DATE_STOPS : ACTIVITY_STOPS
   const backTo    = isDate ? '/date-planner' : '/activity-planner'
 
-  const totalCost = stops.reduce((s, x) => s + x.cost, 0)
-  const totalHrs  = stops.reduce((acc, s) => acc + (parseFloat(s.duration) || 1), 0)
+  const totalCost   = stops.reduce((s, x) => s + x.cost, 0)
+  const totalHrs    = stops.reduce((acc, s) => acc + (parseFloat(s.duration) || 1), 0)
+  const planBudget  = state?.budget ?? null   // budget the user selected in the planner
+  const remaining   = planBudget !== null ? planBudget - totalCost : null
+  const overBudget  = remaining !== null && remaining < 0
 
-  /* OpenAI events */
-  const [aiEvents,    setAiEvents]    = useState([])
-  const [aiLoading,   setAiLoading]   = useState(true)
+  /* Real weather — OpenWeatherMap */
+  const [weather,    setWeather]    = useState(null)
+  const [wxLoading,  setWxLoading]  = useState(true)
+
+  /* OpenAI suggested events */
+  const [aiEvents,   setAiEvents]   = useState([])
+  const [aiLoading,  setAiLoading]  = useState(true)
 
   const loadAiEvents = () => {
     setAiLoading(true)
@@ -183,7 +188,13 @@ export default function RouteResult() {
       .finally(() => setAiLoading(false))
   }
 
-  useEffect(() => { loadAiEvents() }, [])
+  useEffect(() => {
+    loadAiEvents()
+    setWxLoading(true)
+    fetchRigaWeather()
+      .then(setWeather)
+      .finally(() => setWxLoading(false))
+  }, [])
 
   return (
     <div className="flex flex-col min-h-dvh relative">
@@ -205,37 +216,74 @@ export default function RouteResult() {
       <div className="page-scroll px-5 pb-28 relative z-10">
 
         {/* ── Summary bar ── */}
-        <div className="mt-4 mb-5 glass-orange p-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
+        <div className="mt-4 mb-4 glass-orange p-4 flex items-center justify-between">
+          <div className="flex items-center gap-3 flex-wrap">
             <div className="flex items-center gap-1.5 text-sm text-gray-600">
               <Clock size={14} className="text-orange-500" />
               <span>~{totalHrs} st.</span>
             </div>
-            <div className="w-px h-4" style={{ background: 'rgba(0,0,0,0.10)' }} />
+            <div className="w-px h-4 shrink-0" style={{ background: 'rgba(0,0,0,0.10)' }} />
             <div className="flex items-center gap-1.5 text-sm text-gray-600">
               <Euro size={14} className="text-orange-500" />
               <span>€{totalCost}</span>
             </div>
-            <div className="w-px h-4" style={{ background: 'rgba(0,0,0,0.10)' }} />
-            <div className="flex items-center gap-1.5 text-sm text-gray-600">
-              <WeatherIcon type={mockWeather} />
-              <span>{mockTemp}°C</span>
-            </div>
+            <div className="w-px h-4 shrink-0" style={{ background: 'rgba(0,0,0,0.10)' }} />
+            {/* Real weather from OpenWeatherMap */}
+            {wxLoading ? (
+              <div className="skeleton w-16 h-4 rounded" />
+            ) : weather ? (
+              <div className="flex items-center gap-1.5 text-sm text-gray-600">
+                <WeatherIcon condition={weather.condition} />
+                <span>{weather.temp}°C</span>
+                <span className="text-gray-400 text-xs capitalize hidden xs:inline">
+                  {weather.description}
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1 text-xs text-gray-400">
+                <Cloud size={14} />
+                <span>Rīga</span>
+              </div>
+            )}
           </div>
-          <div className="flex items-center gap-1 text-xs text-gray-400">
+          <div className="flex items-center gap-1 text-xs text-gray-400 shrink-0">
             <MapPin size={11} />
             <span>{stops.length} pieturas</span>
           </div>
         </div>
 
-        {/* Weather warning */}
-        {mockWeather === 'rainy' && (
+        {/* Real weather detail card */}
+        {!wxLoading && weather && (
+          <GlassCard className="mb-4 flex items-center gap-4">
+            <img src={weather.icon} alt={weather.description}
+              className="w-12 h-12 shrink-0" style={{ imageRendering: 'crisp-edges' }} />
+            <div className="flex-1 min-w-0">
+              <p className="text-gray-800 font-semibold text-sm capitalize">{weather.description}</p>
+              <p className="text-orange-500 font-bold text-xl">{weather.temp}°C
+                <span className="text-gray-400 text-xs font-normal ml-1">
+                  jūtas kā {weather.feelsLike}°C
+                </span>
+              </p>
+            </div>
+            <div className="flex flex-col items-end gap-1 shrink-0 text-xs text-gray-400">
+              <span className="flex items-center gap-1">
+                <Droplets size={11} className="text-blue-400" />{weather.humidity}%
+              </span>
+              <span className="flex items-center gap-1">
+                <Wind size={11} className="text-gray-400" />{weather.windSpeed} km/h
+              </span>
+            </div>
+          </GlassCard>
+        )}
+
+        {/* Weather warning — rainy */}
+        {!wxLoading && weather?.condition === 'rainy' && (
           <GlassCard className="mb-5 flex items-start gap-3">
             <span className="text-xl shrink-0">☔</span>
             <div>
               <p className="text-sm font-semibold text-gray-800">Lietus brīdinājums</p>
               <p className="text-xs text-gray-500 mt-0.5">
-                Paredzēts lietus — maršrutā iekļautas iekštelpu alternatīvas.
+                Paredzēts lietus — apsver iekštelpu alternatīvas maršrutā.
               </p>
             </div>
           </GlassCard>
@@ -250,7 +298,7 @@ export default function RouteResult() {
         </section>
 
         {/* ── Cost breakdown ── */}
-        <section className="mb-6">
+        <section className="mb-4">
           <p className="section-label">Izmaksu kopsavilkums</p>
           <GlassCard>
             <div className="space-y-2">
@@ -274,6 +322,66 @@ export default function RouteResult() {
             </div>
           </GlassCard>
         </section>
+
+        {/* ── Budget vs actual ── only when user set a budget */}
+        {planBudget !== null && (
+          <section className="mb-6">
+            <p className="section-label">Budžets</p>
+            <div
+              className="rounded-2xl p-4"
+              style={{
+                background: overBudget
+                  ? 'rgba(239,68,68,0.07)'
+                  : 'rgba(34,197,94,0.07)',
+                border: `1px solid ${overBudget ? 'rgba(239,68,68,0.20)' : 'rgba(34,197,94,0.22)'}`,
+              }}
+            >
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm text-gray-600">Tavs budžets</span>
+                <span className="font-bold text-gray-900">€{planBudget}</span>
+              </div>
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm text-gray-600">Plānotās izmaksas</span>
+                <span className="font-bold text-gray-900">€{totalCost}</span>
+              </div>
+              {/* Progress bar */}
+              <div className="h-2 rounded-full mb-3 overflow-hidden"
+                style={{ background: 'rgba(0,0,0,0.08)' }}>
+                <div
+                  className="h-full rounded-full transition-all duration-700"
+                  style={{
+                    width: `${Math.min(100, (totalCost / planBudget) * 100).toFixed(1)}%`,
+                    background: overBudget
+                      ? 'linear-gradient(90deg,#F97316,#EF4444)'
+                      : 'linear-gradient(90deg,#22C55E,#16A34A)',
+                  }}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  {overBudget
+                    ? <TrendingUp  size={14} className="text-red-500" />
+                    : remaining === 0
+                      ? <Minus        size={14} className="text-gray-400" />
+                      : <TrendingDown size={14} className="text-green-500" />
+                  }
+                  <span className={`text-sm font-semibold ${overBudget ? 'text-red-500' : 'text-green-600'}`}>
+                    {overBudget
+                      ? `€${Math.abs(remaining)} virs budžeta`
+                      : `€${remaining} atlicis`
+                    }
+                  </span>
+                </div>
+                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${overBudget
+                  ? 'bg-red-100 text-red-600'
+                  : 'bg-green-100 text-green-700'
+                }`}>
+                  {overBudget ? 'Pārtērēts' : 'Budžetā ✓'}
+                </span>
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* ── OpenAI live events ── */}
         <section className="mb-6">

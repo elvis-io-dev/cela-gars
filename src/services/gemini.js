@@ -79,18 +79,34 @@ Atgriez TIKAI derīgu JSON masīvu (bez markdown, bez papildu teksta):
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        tools: [{ googleSearch: {} }],
-        generationConfig: { temperature: 0.2 },
+        tools: [{ google_search: {} }],
+        generationConfig: { temperature: 0.1, responseMimeType: 'text/plain' },
       }),
     })
 
-    if (!res.ok) throw new Error(`Gemini HTTP ${res.status}`)
+    if (!res.ok) {
+      const errBody = await res.text()
+      throw new Error(`Gemini HTTP ${res.status}: ${errBody}`)
+    }
     const data = await res.json()
 
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
-    const clean = text.replace(/```(?:json)?/g, '').trim()
-    const match = clean.match(/\[[\s\S]*\]/)
-    if (!match) return FALLBACK_EVENTS
+    // Join ALL parts (grounding can split the response into multiple parts)
+    const parts = data?.candidates?.[0]?.content?.parts ?? []
+    const rawText = parts.map((p) => p.text ?? '').join('')
+
+    // Strip Google Search citation markers like [1], [2], [1,2] that break JSON
+    const stripped = rawText
+      .replace(/\[\d+(?:,\s*\d+)*\]/g, '')  // [1], [2,3], etc.
+      .replace(/```(?:json)?/g, '')           // markdown code fences
+      .trim()
+
+    // Extract the first JSON array found in the response
+    const match = stripped.match(/\[[\s\S]*?\](?=\s*$|\s*[^,\w])/) ||
+                  stripped.match(/\[[\s\S]*\]/)
+    if (!match) {
+      console.warn('[Gemini] No JSON array found in response:', stripped.slice(0, 200))
+      return FALLBACK_EVENTS
+    }
 
     const parsed = JSON.parse(match[0])
     return Array.isArray(parsed) && parsed.length ? parsed : FALLBACK_EVENTS
