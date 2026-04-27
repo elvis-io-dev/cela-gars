@@ -10,11 +10,15 @@ import { generateRoute } from '../services/routeGenerator'
 import { fetchLatviaEvents } from '../services/openai'
 import { fetchRigaWeather } from '../services/weather'
 import { getSeason, getSeasonalStops } from '../utils/seasonal'
+import {
+  getCityCoords, haversineKm,
+  estimateTravelTime, getTransportLabel, getTransportIcon,
+} from '../utils/geography'
 import { useApp } from '../context/AppContext'
 import {
   MapPin, Clock, Euro, Sun, Cloud, CloudRain, Wind,
   Droplets, Share2, RefreshCw, ChevronDown, ChevronUp,
-  Zap, TrendingUp, TrendingDown, Minus, Sparkles,
+  Zap, TrendingUp, TrendingDown, Minus, Sparkles, Navigation,
 } from 'lucide-react'
 
 /* ── Weather icon ──────────────────────────────────────────── */
@@ -173,16 +177,42 @@ export default function RouteResult() {
   const remaining  = budget !== null ? budget - totalCost : null
   const overBudget = remaining !== null && remaining < 0
 
+  /* ── Travel time from start to first stop ── */
+  const travelInfo = (() => {
+    if (routeLoading || routeStops.length === 0) return null
+    const startName = state?.startLocation
+    if (!startName) return null
+    const firstStop   = routeStops[0]
+    const destName    = firstStop.location || startName
+    const startCoords = getCityCoords(startName)
+    const destCoords  = getCityCoords(destName)
+    const distKm      = haversineKm(startCoords.lat, startCoords.lon, destCoords.lat, destCoords.lon)
+    if (distKm < 2) return null   // same area — not worth showing
+    const transport   = state?.transport ?? []
+    return {
+      distKm:    Math.round(distKm),
+      timeStr:   estimateTravelTime(distKm, transport),
+      modeLabel: getTransportLabel(transport),
+      modeIcon:  getTransportIcon(transport),
+      destCity:  destName,
+    }
+  })()
+
   return (
     <div className="flex flex-col min-h-dvh relative">
       <BlobBackground />
       <PageHeader
         title={isDate ? 'Randiņa maršruts' : 'Aktivitāšu maršruts'}
-        subtitle={
-          budget !== null
-            ? budget === 0 ? 'Bezmaksas maršruts' : `Budžets €${budget}`
-            : 'Šodienai sagatavots plāns'
-        }
+        subtitle={(() => {
+          const parts = []
+          if (state?.startLocation && state.startLocation !== 'Rīga')
+            parts.push(`No ${state.startLocation}`)
+          if (state?.maxDistance && state.maxDistance < 200)
+            parts.push(`${state.maxDistance} km`)
+          if (budget !== null)
+            parts.push(budget === 0 ? 'Bezmaksas' : `€${budget}`)
+          return parts.length ? parts.join(' · ') : 'Šodienai sagatavots plāns'
+        })()}
         backTo={backTo}
         action={
           <button
@@ -250,6 +280,23 @@ export default function RouteResult() {
             }
           </div>
         </div>
+
+        {/* ── Travel time to first stop ── */}
+        {travelInfo && (
+          <div className="mb-4 flex items-center gap-3 px-4 py-3 rounded-2xl"
+            style={{ background: 'rgba(99,102,241,0.07)', border: '1px solid rgba(99,102,241,0.18)' }}>
+            <span className="text-xl shrink-0">{travelInfo.modeIcon}</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-gray-800">
+                {state?.startLocation} → {travelInfo.destCity}
+              </p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {travelInfo.timeStr} {travelInfo.modeLabel} · {travelInfo.distKm} km
+              </p>
+            </div>
+            <Navigation size={14} className="text-indigo-400 shrink-0" />
+          </div>
+        )}
 
         {/* Real weather detail card */}
         {!wxLoading && weather && (

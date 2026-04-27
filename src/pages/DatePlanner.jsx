@@ -7,6 +7,7 @@ import TagSelector from '../components/TagSelector'
 import SliderInput from '../components/SliderInput'
 import GlassCard from '../components/GlassCard'
 import RescueMode from '../components/RescueMode'
+import LocationSection from '../components/LocationSection'
 import { useApp } from '../context/AppContext'
 import { getSeasonalWarning } from '../utils/seasonal'
 import { User, Sparkles, AlertTriangle } from 'lucide-react'
@@ -49,25 +50,31 @@ export default function DatePlanner() {
   const navigate = useNavigate()
   const { guestMode, partnerProfile } = useApp()
 
-  const [dateType,    setDateType]    = useState('first')
-  const [transport,   setTransport]   = useState([])
-  const [vibes,       setVibes]       = useState([])
-  const [duration,    setDuration]    = useState(3)
-  const [budget,      setBudget]      = useState(60)
-  const [partnerName, setPartnerName] = useState(partnerProfile?.name ?? '')
-  const [partnerAge,  setPartnerAge]  = useState(partnerProfile?.age  ?? '')
-  const [mood,        setMood]        = useState('neutral')
+  const [dateType,       setDateType]       = useState('first')
+  const [transport,      setTransport]      = useState([])
+  const [vibes,          setVibes]          = useState([])
+  const [duration,       setDuration]       = useState(3)
+  const [budget,         setBudget]         = useState(60)
+  const [partnerName,    setPartnerName]    = useState(partnerProfile?.name ?? '')
+  const [partnerAge,     setPartnerAge]     = useState(partnerProfile?.age  ?? '')
+  const [mood,           setMood]           = useState('neutral')
+  const [startLocation,  setStartLocation]  = useState('Rīga')
+  const [maxDistance,    setMaxDistance]    = useState(50)
+  const [direction,      setDirection]      = useState('all')
 
   const toggleArr = (setter) => (v) =>
     setter((p) => p.includes(v) ? p.filter((x) => x !== v) : [...p, v])
 
-  const isReady     = transport.length > 0 && vibes.length > 0
-  const isDistress  = mood === 'angry' || mood === 'sad'
-  const warnings    = getSeasonalWarning(vibes, [])
+  const isReady    = transport.length > 0 && vibes.length > 0
+  const isDistress = mood === 'angry' || mood === 'sad'
+  const warnings   = getSeasonalWarning(vibes, [])
 
   const handleGenerate = () =>
     navigate('/route-result', {
-      state: { type: 'date', dateType, transport, vibes, duration, budget, partnerName, mood },
+      state: {
+        type: 'date', dateType, transport, vibes, duration, budget,
+        partnerName, mood, startLocation, maxDistance, direction,
+      },
     })
 
   return (
@@ -81,7 +88,7 @@ export default function DatePlanner() {
 
       <div className="page-scroll px-5 pb-36 relative z-10">
 
-        {/* Mood selector */}
+        {/* ── Mood selector ── */}
         <section className="mt-5 mb-6">
           <p className="section-label">Kā viņa šodien jūtas?</p>
           <div className="grid grid-cols-4 gap-2">
@@ -107,7 +114,7 @@ export default function DatePlanner() {
           </div>
         </section>
 
-        {/* Rescue Mode — only when distress AND not in guest mode */}
+        {/* ── Rescue Mode ── */}
         {isDistress && !guestMode && (
           <section className="mb-6">
             <RescueMode
@@ -117,7 +124,7 @@ export default function DatePlanner() {
           </section>
         )}
 
-        {/* Seasonal warnings */}
+        {/* ── Seasonal warnings ── */}
         {warnings.length > 0 && (
           <div className="mb-6 space-y-2">
             {warnings.map((w, i) => (
@@ -130,13 +137,20 @@ export default function DatePlanner() {
           </div>
         )}
 
-        {/* Date type */}
+        {/* ── Start location + distance + direction ── */}
+        <LocationSection
+          startLocation={startLocation} setStartLocation={setStartLocation}
+          maxDistance={maxDistance}     setMaxDistance={setMaxDistance}
+          direction={direction}         setDirection={setDirection}
+        />
+
+        {/* ── Date type ── */}
         <section className="mb-6">
           <p className="section-label">Randiņa veids</p>
           <Toggle options={DATE_TYPE_OPTIONS} value={dateType} onChange={setDateType} />
         </section>
 
-        {/* Partner info */}
+        {/* ── Partner info ── */}
         <section className="mb-6">
           <p className="section-label">Partnera info</p>
           <GlassCard>
@@ -174,19 +188,19 @@ export default function DatePlanner() {
           </GlassCard>
         </section>
 
-        {/* Transport */}
+        {/* ── Transport ── */}
         <section className="mb-6">
           <p className="section-label">Pārvietošanās</p>
           <TagSelector options={TRANSPORT_OPTIONS} selected={transport} onToggle={toggleArr(setTransport)} />
         </section>
 
-        {/* Vibes */}
+        {/* ── Vibes ── */}
         <section className="mb-6">
           <p className="section-label">Noskaņa</p>
           <TagSelector options={VIBE_OPTIONS} selected={vibes} onToggle={toggleArr(setVibes)} />
         </section>
 
-        {/* Duration */}
+        {/* ── Duration ── */}
         <section className="mb-6">
           <p className="section-label">Ilgums</p>
           <GlassCard>
@@ -200,7 +214,7 @@ export default function DatePlanner() {
           </GlassCard>
         </section>
 
-        {/* Budget */}
+        {/* ── Budget ── */}
         <section className="mb-6">
           <p className="section-label">Budžets</p>
           <GlassCard>
@@ -208,8 +222,8 @@ export default function DatePlanner() {
               label="Uz diviem"
               value={budget}
               onChange={setBudget}
-              min={10} max={300} step={5}
-              format={(v) => `€${v}`}
+              min={0} max={300} step={5}
+              format={(v) => v === 0 ? 'Bezmaksas' : `€${v}`}
             />
           </GlassCard>
           <div className="grid grid-cols-3 gap-2 mt-3">
@@ -229,7 +243,7 @@ export default function DatePlanner() {
         </section>
       </div>
 
-      {/* CTA */}
+      {/* ── CTA ── */}
       <div
         className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[390px] px-5 pb-8 pt-5 z-20"
         style={{ background: 'linear-gradient(to top, rgba(255,247,237,0.98) 60%, transparent)' }}
@@ -239,10 +253,7 @@ export default function DatePlanner() {
           disabled={!isReady}
           className={`w-full py-4 rounded-2xl font-bold text-base flex items-center justify-center gap-2 transition-all active:scale-[0.98]
             ${isReady ? 'btn-primary' : 'text-gray-400 cursor-not-allowed'}`}
-          style={!isReady ? {
-            background: 'rgba(0,0,0,0.06)',
-            border: '1px solid rgba(0,0,0,0.06)',
-          } : {}}
+          style={!isReady ? { background: 'rgba(0,0,0,0.06)', border: '1px solid rgba(0,0,0,0.06)' } : {}}
         >
           <Sparkles size={18} />
           Veidot maršrutu

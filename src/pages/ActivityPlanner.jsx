@@ -5,8 +5,8 @@ import BlobBackground from '../components/BlobBackground'
 import TagSelector from '../components/TagSelector'
 import SliderInput from '../components/SliderInput'
 import GlassCard from '../components/GlassCard'
+import LocationSection from '../components/LocationSection'
 import { Sparkles, Plus, Minus } from 'lucide-react'
-
 
 const GROUP_OPTIONS = [
   { value: 'solo',    label: 'Solo',   icon: '🙋' },
@@ -46,14 +46,17 @@ const BUDGET_PRESETS = [
 
 export default function ActivityPlanner() {
   const navigate = useNavigate()
-  const [group,       setGroup]       = useState('friends')
-  const [peopleCount, setPeopleCount] = useState(3)
-  const [transport,   setTransport]   = useState([])
-  const [interests,   setInterests]   = useState([])
-  const [duration,    setDuration]    = useState(4)
-  const [budget,      setBudget]      = useState(50)
-  const [hasKids,     setHasKids]     = useState(false)
-  const [hasDog,      setHasDog]      = useState(false)
+  const [group,         setGroup]         = useState('friends')
+  const [peopleCount,   setPeopleCount]   = useState(3)
+  const [transport,     setTransport]     = useState([])
+  const [interests,     setInterests]     = useState([])
+  const [duration,      setDuration]      = useState(4)
+  const [budget,        setBudget]        = useState(50)
+  const [hasKids,       setHasKids]       = useState(false)
+  const [hasDog,        setHasDog]        = useState(false)
+  const [startLocation, setStartLocation] = useState('Rīga')
+  const [maxDistance,   setMaxDistance]   = useState(100)
+  const [direction,     setDirection]     = useState('all')
 
   const toggleArr = (setter) => (v) =>
     setter((p) => p.includes(v) ? p.filter((x) => x !== v) : [...p, v])
@@ -62,7 +65,11 @@ export default function ActivityPlanner() {
 
   const handleGenerate = () =>
     navigate('/route-result', {
-      state: { type: 'activity', group, peopleCount, transport, interests, duration, budget, hasKids, hasDog },
+      state: {
+        type: 'activity', group, peopleCount, transport, interests,
+        duration, budget, hasKids, hasDog,
+        startLocation, maxDistance, direction,
+      },
     })
 
   const CounterBtn = ({ onClick, children }) => (
@@ -86,13 +93,13 @@ export default function ActivityPlanner() {
 
       <div className="page-scroll px-5 pb-36 relative z-10">
 
-        {/* Group type */}
+        {/* ── Group type ── */}
         <section className="mt-5 mb-6">
           <p className="section-label">Ar ko dodies?</p>
           <TagSelector options={GROUP_OPTIONS} selected={group} onToggle={setGroup} multi={false} />
         </section>
 
-        {/* People count */}
+        {/* ── People count ── */}
         {group !== 'solo' && (
           <section className="mb-6">
             <p className="section-label">Cilvēku skaits</p>
@@ -110,7 +117,6 @@ export default function ActivityPlanner() {
                 </div>
               </div>
             </GlassCard>
-
             {group === 'family' && (
               <button
                 onClick={() => setHasKids((v) => !v)}
@@ -123,7 +129,7 @@ export default function ActivityPlanner() {
           </section>
         )}
 
-        {/* Dog toggle — always visible */}
+        {/* ── Dog toggle ── */}
         <section className="mb-6">
           <p className="section-label">Suns nāk līdzi?</p>
           <button
@@ -141,19 +147,26 @@ export default function ActivityPlanner() {
           )}
         </section>
 
-        {/* Transport */}
+        {/* ── Start location + distance + direction ── */}
+        <LocationSection
+          startLocation={startLocation} setStartLocation={setStartLocation}
+          maxDistance={maxDistance}     setMaxDistance={setMaxDistance}
+          direction={direction}         setDirection={setDirection}
+        />
+
+        {/* ── Transport ── */}
         <section className="mb-6">
           <p className="section-label">Pārvietošanās</p>
           <TagSelector options={TRANSPORT_OPTIONS} selected={transport} onToggle={toggleArr(setTransport)} />
         </section>
 
-        {/* Interests */}
+        {/* ── Interests ── */}
         <section className="mb-6">
           <p className="section-label">Intereses</p>
           <TagSelector options={INTEREST_OPTIONS} selected={interests} onToggle={toggleArr(setInterests)} />
         </section>
 
-        {/* Duration */}
+        {/* ── Duration ── */}
         <section className="mb-6">
           <p className="section-label">Ilgums</p>
           <GlassCard>
@@ -164,7 +177,7 @@ export default function ActivityPlanner() {
           </GlassCard>
         </section>
 
-        {/* Budget */}
+        {/* ── Budget ── */}
         <section className="mb-6">
           <p className="section-label">Budžets uz personu</p>
           <GlassCard>
@@ -189,7 +202,7 @@ export default function ActivityPlanner() {
         </section>
       </div>
 
-      {/* CTA */}
+      {/* ── CTA ── */}
       <div
         className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[390px] px-5 pb-8 pt-5 z-20"
         style={{ background: 'linear-gradient(to top, rgba(245,243,255,0.98) 60%, transparent)' }}
