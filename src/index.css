@@ -8,7 +8,9 @@
   }
 
   body {
-    @apply bg-stone-950 text-white font-sans antialiased;
+    @apply font-sans antialiased;
+    background-color: #FAFAF9;
+    color: #111827;
     min-height: 100dvh;
   }
 
@@ -19,61 +21,89 @@
 }
 
 @layer components {
+  /* ── App shell ── */
   .app-shell {
-    @apply w-full max-w-[390px] min-h-dvh relative overflow-hidden flex flex-col;
-    background: linear-gradient(160deg, #1c0a00 0%, #0f0f0f 50%, #0a0a1a 100%);
+    @apply w-full max-w-[390px] min-h-dvh relative flex flex-col overflow-x-hidden;
+    background: linear-gradient(
+      150deg,
+      #FFF7ED 0%,
+      #FFFBF5 20%,
+      #FFFFFF 45%,
+      #F5F3FF 72%,
+      #EFF6FF 100%
+    );
   }
 
+  /* ── Glass cards ── */
   .glass {
-    @apply rounded-2xl border border-white/10;
-    background: rgba(255, 255, 255, 0.06);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
+    background: rgba(255, 255, 255, 0.65);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.82);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06), 0 1px 3px rgba(0, 0, 0, 0.04);
+    @apply rounded-2xl;
   }
 
   .glass-strong {
-    @apply rounded-2xl border border-white/15;
-    background: rgba(255, 255, 255, 0.10);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
+    background: rgba(255, 255, 255, 0.82);
+    backdrop-filter: blur(32px);
+    -webkit-backdrop-filter: blur(32px);
+    border: 1px solid rgba(255, 255, 255, 0.92);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08), 0 2px 6px rgba(0, 0, 0, 0.04);
+    @apply rounded-2xl;
   }
 
   .glass-orange {
-    @apply rounded-2xl border border-orange-500/30;
-    background: rgba(249, 115, 22, 0.12);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
+    background: rgba(249, 115, 22, 0.07);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(249, 115, 22, 0.22);
+    box-shadow: 0 4px 20px rgba(249, 115, 22, 0.10);
+    @apply rounded-2xl;
   }
 
+  .glass-dark {
+    background: rgba(17, 24, 39, 0.75);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    @apply rounded-2xl;
+  }
+
+  /* ── Buttons ── */
   .btn-primary {
-    @apply bg-primary text-white font-semibold rounded-2xl px-6 py-4
-           active:scale-95 transition-all duration-150 shadow-lg
-           shadow-orange-500/25 hover:bg-primary-600;
+    @apply bg-orange-500 text-white font-semibold rounded-2xl px-6 py-4
+           active:scale-[0.97] transition-all duration-150
+           shadow-lg shadow-orange-500/30 hover:bg-orange-600;
   }
 
   .btn-ghost {
-    @apply glass text-white/80 font-medium rounded-2xl px-6 py-4
-           active:scale-95 transition-all duration-150;
+    @apply text-gray-700 font-medium rounded-2xl px-6 py-4
+           active:scale-[0.97] transition-all duration-150;
+    background: rgba(255, 255, 255, 0.65);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.82);
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
   }
 
-  .input-glass {
-    @apply glass w-full px-4 py-3 text-white placeholder-white/30
-           outline-none focus:border-primary/50 focus:ring-1
-           focus:ring-primary/30 transition-all duration-200 rounded-2xl;
-  }
-
+  /* ── Tags ── */
   .tag {
-    @apply glass text-sm text-white/70 px-3 py-1.5 rounded-xl cursor-pointer
-           active:scale-95 transition-all duration-150;
+    background: rgba(255, 255, 255, 0.75);
+    border: 1px solid rgba(209, 213, 219, 0.70);
+    @apply text-sm text-gray-600 px-3 py-1.5 rounded-xl cursor-pointer
+           active:scale-95 transition-all duration-150 font-medium;
   }
 
   .tag-active {
-    @apply glass-orange text-primary font-medium text-sm px-3 py-1.5 rounded-xl
+    background: rgba(249, 115, 22, 0.10);
+    border: 1px solid rgba(249, 115, 22, 0.35);
+    @apply text-orange-600 font-semibold text-sm px-3 py-1.5 rounded-xl
            cursor-pointer active:scale-95 transition-all duration-150;
   }
 
+  /* ── Labels & helpers ── */
   .section-label {
-    @apply text-xs font-semibold uppercase tracking-widest text-white/40 mb-3;
+    @apply text-xs font-semibold uppercase tracking-widest text-gray-400 mb-3;
   }
 
   .page-scroll {
@@ -81,33 +111,34 @@
     scrollbar-width: none;
     -ms-overflow-style: none;
   }
+  .page-scroll::-webkit-scrollbar { display: none; }
 
-  .page-scroll::-webkit-scrollbar {
-    display: none;
+  .input-glass {
+    background: rgba(255, 255, 255, 0.65);
+    border: 1px solid rgba(209, 213, 219, 0.60);
+    @apply w-full px-4 py-3 text-gray-900 placeholder-gray-400
+           outline-none focus:border-orange-400 focus:ring-1
+           focus:ring-orange-200 transition-all duration-200 rounded-2xl;
   }
+
+  /* ── Skeleton loader ── */
+  .skeleton {
+    @apply animate-pulse rounded-xl;
+    background: linear-gradient(90deg, rgba(0,0,0,0.06) 25%, rgba(0,0,0,0.03) 50%, rgba(0,0,0,0.06) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.4s infinite;
+  }
+
+  @keyframes shimmer {
+    0%   { background-position: -200% 0; }
+    100% { background-position:  200% 0; }
+  }
+
+  .min-h-dvh { min-height: 100dvh; }
 }
 
 @layer utilities {
   .text-gradient {
-    @apply bg-gradient-to-r from-primary to-amber-400 bg-clip-text text-transparent;
+    @apply bg-gradient-to-r from-orange-500 to-amber-400 bg-clip-text text-transparent;
   }
-
-  .glow-orange {
-    box-shadow: 0 0 40px rgba(249, 115, 22, 0.2);
-  }
-
-  .min-h-dvh {
-    min-height: 100dvh;
-  }
-}
-
-/* Smooth page transitions */
-.page-enter {
-  opacity: 0;
-  transform: translateX(20px);
-}
-.page-enter-active {
-  opacity: 1;
-  transform: translateX(0);
-  transition: opacity 250ms ease, transform 250ms ease;
 }

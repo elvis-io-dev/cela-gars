@@ -2,11 +2,11 @@ export default function TagSelector({ options, selected, onToggle, multi = true 
   return (
     <div className="flex flex-wrap gap-2">
       {options.map((opt) => {
-        const isSelected = multi
-          ? selected.includes(opt.value ?? opt)
-          : selected === (opt.value ?? opt)
-        const label = opt.label ?? opt
         const value = opt.value ?? opt
+        const label = opt.label ?? opt
+        const isSelected = multi
+          ? selected.includes(value)
+          : selected === value
 
         return (
           <button
