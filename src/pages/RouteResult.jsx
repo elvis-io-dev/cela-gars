@@ -5,12 +5,15 @@ import BlobBackground from '../components/BlobBackground'
 import GlassCard from '../components/GlassCard'
 import LocationPhoto from '../components/LocationPhoto'
 import EventCard from '../components/EventCard'
+import PackingList from '../components/PackingList'
 import { fetchLatviaEvents } from '../services/openai'
 import { fetchRigaWeather } from '../services/weather'
+import { getSeason, getSeasonalStops } from '../utils/seasonal'
+import { useApp } from '../context/AppContext'
 import {
   MapPin, Clock, Euro, Sun, Cloud, CloudRain, Wind,
   Droplets, Share2, RefreshCw, ChevronDown, ChevronUp,
-  Zap, TrendingUp, TrendingDown, Minus,
+  Zap, TrendingUp, TrendingDown, Minus, Sparkles,
 } from 'lucide-react'
 
 /* ── Static route data ─────────────────────────────────────── */
@@ -163,13 +166,18 @@ function StopCard({ stop, index, isLast }) {
 export default function RouteResult() {
   const navigate  = useNavigate()
   const { state } = useLocation()
+  const { guestMode } = useApp()
   const isDate    = state?.type === 'date'
   const stops     = isDate ? DATE_STOPS : ACTIVITY_STOPS
   const backTo    = isDate ? '/date-planner' : '/activity-planner'
 
+  const interests   = state?.interests ?? []
+  const hasDog      = state?.hasDog    ?? false
+  const season      = getSeason()
+
   const totalCost   = stops.reduce((s, x) => s + x.cost, 0)
   const totalHrs    = stops.reduce((acc, s) => acc + (parseFloat(s.duration) || 1), 0)
-  const planBudget  = state?.budget ?? null   // budget the user selected in the planner
+  const planBudget  = state?.budget ?? null
   const remaining   = planBudget !== null ? planBudget - totalCost : null
   const overBudget  = remaining !== null && remaining < 0
 
@@ -382,6 +390,58 @@ export default function RouteResult() {
             </div>
           </section>
         )}
+
+        {/* ── Packing list ── */}
+        <PackingList
+          weather={weather}
+          isDate={isDate}
+          interests={interests}
+          hasDog={hasDog}
+          season={season}
+        />
+
+        {/* ── Seasonal bonus stops ── */}
+        {(() => {
+          const bonusStops = !wxLoading ? getSeasonalStops(weather) : []
+          if (bonusStops.length === 0) return null
+          return (
+            <section className="mb-6">
+              <div className="flex items-center gap-2 mb-3">
+                <p className="section-label mb-0">Sezonālie ieteikumi</p>
+                <span className="text-xs font-semibold text-orange-500 bg-orange-50 px-2 py-0.5 rounded-full border border-orange-100">
+                  {season === 'winter' ? '❄️' : season === 'spring' ? '🌸' : season === 'summer' ? '☀️' : '🍂'} Sezona
+                </span>
+              </div>
+              <div className="space-y-3">
+                {bonusStops.map((stop, i) => (
+                  <div key={i} className="glass p-4 flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl shrink-0"
+                      style={{ background: 'rgba(249,115,22,0.10)', border: '1px solid rgba(249,115,22,0.20)' }}>
+                      {stop.icon}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <h3 className="text-gray-900 font-semibold text-sm">{stop.title}</h3>
+                        <span className="text-sm font-bold text-orange-500 shrink-0">
+                          {stop.cost === 0 ? 'Bezmaksas' : `€${stop.cost}`}
+                        </span>
+                      </div>
+                      <p className="text-gray-500 text-xs mt-1 leading-relaxed">{stop.desc}</p>
+                      <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                        {stop.tags.map((t) => (
+                          <span key={t} className="text-[10px] px-2 py-0.5 rounded-full font-medium"
+                            style={{ background: 'rgba(249,115,22,0.09)', color: '#EA580C', border: '1px solid rgba(249,115,22,0.20)' }}>
+                            {t}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )
+        })()}
 
         {/* ── OpenAI live events ── */}
         <section className="mb-6">

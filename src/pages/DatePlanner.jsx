@@ -6,7 +6,10 @@ import Toggle from '../components/Toggle'
 import TagSelector from '../components/TagSelector'
 import SliderInput from '../components/SliderInput'
 import GlassCard from '../components/GlassCard'
-import { User, Sparkles } from 'lucide-react'
+import RescueMode from '../components/RescueMode'
+import { useApp } from '../context/AppContext'
+import { getSeasonalWarning } from '../utils/seasonal'
+import { User, Sparkles, AlertTriangle } from 'lucide-react'
 
 const DATE_TYPE_OPTIONS = [
   { value: 'first',  label: 'Pirmais', icon: '✨' },
@@ -35,24 +38,36 @@ const BUDGET_PRESETS = [
   { label: 'Premium',    value: 200, icon: '💛' },
 ]
 
+const MOODS = [
+  { value: 'happy',   emoji: '😊', label: 'Laimīga' },
+  { value: 'neutral', emoji: '😐', label: 'Neitrāla' },
+  { value: 'sad',     emoji: '😢', label: 'Skumja' },
+  { value: 'angry',   emoji: '😠', label: 'Sarūgtināta' },
+]
+
 export default function DatePlanner() {
   const navigate = useNavigate()
-  const [dateType,     setDateType]     = useState('first')
-  const [transport,    setTransport]    = useState([])
-  const [vibes,        setVibes]        = useState([])
-  const [duration,     setDuration]     = useState(3)
-  const [budget,       setBudget]       = useState(60)
-  const [partnerName,  setPartnerName]  = useState('')
-  const [partnerAge,   setPartnerAge]   = useState('')
+  const { guestMode, partnerProfile } = useApp()
+
+  const [dateType,    setDateType]    = useState('first')
+  const [transport,   setTransport]   = useState([])
+  const [vibes,       setVibes]       = useState([])
+  const [duration,    setDuration]    = useState(3)
+  const [budget,      setBudget]      = useState(60)
+  const [partnerName, setPartnerName] = useState(partnerProfile?.name ?? '')
+  const [partnerAge,  setPartnerAge]  = useState(partnerProfile?.age  ?? '')
+  const [mood,        setMood]        = useState('neutral')
 
   const toggleArr = (setter) => (v) =>
     setter((p) => p.includes(v) ? p.filter((x) => x !== v) : [...p, v])
 
-  const isReady = transport.length > 0 && vibes.length > 0
+  const isReady     = transport.length > 0 && vibes.length > 0
+  const isDistress  = mood === 'angry' || mood === 'sad'
+  const warnings    = getSeasonalWarning(vibes, [])
 
   const handleGenerate = () =>
     navigate('/route-result', {
-      state: { type: 'date', dateType, transport, vibes, duration, budget, partnerName },
+      state: { type: 'date', dateType, transport, vibes, duration, budget, partnerName, mood },
     })
 
   return (
@@ -66,8 +81,57 @@ export default function DatePlanner() {
 
       <div className="page-scroll px-5 pb-36 relative z-10">
 
-        {/* Date type */}
+        {/* Mood selector */}
         <section className="mt-5 mb-6">
+          <p className="section-label">Kā viņa šodien jūtas?</p>
+          <div className="grid grid-cols-4 gap-2">
+            {MOODS.map((m) => (
+              <button
+                key={m.value}
+                onClick={() => setMood(m.value)}
+                className={`rounded-2xl py-3 flex flex-col items-center gap-1 transition-all active:scale-95
+                  ${mood === m.value
+                    ? isDistress
+                      ? 'bg-red-50 border border-red-200 shadow-sm'
+                      : 'glass-orange'
+                    : 'glass'}`}
+              >
+                <span className="text-2xl">{m.emoji}</span>
+                <span className={`text-[10px] font-semibold ${
+                  mood === m.value
+                    ? isDistress ? 'text-red-500' : 'text-orange-600'
+                    : 'text-gray-400'
+                }`}>{m.label}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        {/* Rescue Mode — only when distress AND not in guest mode */}
+        {isDistress && !guestMode && (
+          <section className="mb-6">
+            <RescueMode
+              mood={mood}
+              partnerName={partnerName || partnerProfile?.name || 'viņai'}
+            />
+          </section>
+        )}
+
+        {/* Seasonal warnings */}
+        {warnings.length > 0 && (
+          <div className="mb-6 space-y-2">
+            {warnings.map((w, i) => (
+              <div key={i} className="flex items-start gap-3 rounded-2xl px-4 py-3"
+                style={{ background: 'rgba(251,191,36,0.10)', border: '1px solid rgba(251,191,36,0.30)' }}>
+                <AlertTriangle size={14} className="text-amber-500 shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-700 leading-relaxed">{w}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Date type */}
+        <section className="mb-6">
           <p className="section-label">Randiņa veids</p>
           <Toggle options={DATE_TYPE_OPTIONS} value={dateType} onChange={setDateType} />
         </section>
@@ -99,12 +163,14 @@ export default function DatePlanner() {
                 min={16} max={99}
               />
             </div>
-            <button
-              onClick={() => navigate('/partner-profile')}
-              className="w-full text-center text-xs text-orange-500 pt-3 active:opacity-60"
-            >
-              Rediģēt pilno profilu →
-            </button>
+            {!guestMode && (
+              <button
+                onClick={() => navigate('/partner-profile')}
+                className="w-full text-center text-xs text-orange-500 pt-3 active:opacity-60"
+              >
+                Rediģēt pilno profilu →
+              </button>
+            )}
           </GlassCard>
         </section>
 

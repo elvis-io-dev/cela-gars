@@ -7,6 +7,7 @@ import SliderInput from '../components/SliderInput'
 import GlassCard from '../components/GlassCard'
 import { Sparkles, Plus, Minus } from 'lucide-react'
 
+
 const GROUP_OPTIONS = [
   { value: 'solo',    label: 'Solo',   icon: '🙋' },
   { value: 'couple',  label: 'Pāris',  icon: '👫' },
@@ -52,6 +53,7 @@ export default function ActivityPlanner() {
   const [duration,    setDuration]    = useState(4)
   const [budget,      setBudget]      = useState(50)
   const [hasKids,     setHasKids]     = useState(false)
+  const [hasDog,      setHasDog]      = useState(false)
 
   const toggleArr = (setter) => (v) =>
     setter((p) => p.includes(v) ? p.filter((x) => x !== v) : [...p, v])
@@ -60,7 +62,7 @@ export default function ActivityPlanner() {
 
   const handleGenerate = () =>
     navigate('/route-result', {
-      state: { type: 'activity', group, peopleCount, transport, interests, duration, budget, hasKids },
+      state: { type: 'activity', group, peopleCount, transport, interests, duration, budget, hasKids, hasDog },
     })
 
   const CounterBtn = ({ onClick, children }) => (
@@ -120,6 +122,24 @@ export default function ActivityPlanner() {
             )}
           </section>
         )}
+
+        {/* Dog toggle — always visible */}
+        <section className="mb-6">
+          <p className="section-label">Suns nāk līdzi?</p>
+          <button
+            onClick={() => setHasDog((v) => !v)}
+            className={`w-full py-4 rounded-2xl text-sm font-semibold flex items-center justify-center gap-3 transition-all active:scale-[0.98]
+              ${hasDog ? 'glass-orange text-orange-600' : 'glass text-gray-500'}`}
+          >
+            <span className="text-2xl">{hasDog ? '🐕' : '🐾'}</span>
+            {hasDog ? 'Suns nāk — piemērotas vietas' : 'Nāks suns (suņiem draudzīgas vietas)'}
+          </button>
+          {hasDog && (
+            <p className="text-xs text-gray-400 mt-2 text-center">
+              Maršruts ietvers suņiem draudzīgas vietas un parkus
+            </p>
+          )}
+        </section>
 
         {/* Transport */}
         <section className="mb-6">

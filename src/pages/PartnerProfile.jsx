@@ -4,6 +4,7 @@ import PageHeader from '../components/PageHeader'
 import BlobBackground from '../components/BlobBackground'
 import GlassCard from '../components/GlassCard'
 import TagSelector from '../components/TagSelector'
+import { useApp } from '../context/AppContext'
 import { Check, Trash2 } from 'lucide-react'
 
 const INTEREST_OPTIONS = [
@@ -47,13 +48,15 @@ const AVATARS = ['👩', '👨', '🧑', '👱', '🧔', '👩‍🦰', '👩‍
 
 export default function PartnerProfile() {
   const navigate = useNavigate()
-  const [name,            setName]            = useState('')
-  const [age,             setAge]             = useState('')
-  const [avatar,          setAvatar]          = useState('👩')
-  const [interests,       setInterests]       = useState([])
-  const [personality,     setPersonality]     = useState([])
-  const [dislikes,        setDislikes]        = useState([])
-  const [note,            setNote]            = useState('')
+  const { partnerProfile, savePartnerProfile } = useApp()
+
+  const [name,            setName]            = useState(partnerProfile?.name        ?? '')
+  const [age,             setAge]             = useState(partnerProfile?.age         ?? '')
+  const [avatar,          setAvatar]          = useState(partnerProfile?.avatar      ?? '👩')
+  const [interests,       setInterests]       = useState(partnerProfile?.interests   ?? [])
+  const [personality,     setPersonality]     = useState(partnerProfile?.personality ?? [])
+  const [dislikes,        setDislikes]        = useState(partnerProfile?.dislikes    ?? [])
+  const [note,            setNote]            = useState(partnerProfile?.note        ?? '')
   const [saved,           setSaved]           = useState(false)
   const [showAvatarPicker,setShowAvatarPicker]= useState(false)
 
@@ -69,8 +72,15 @@ export default function PartnerProfile() {
   ].filter(Boolean).length
 
   const handleSave = () => {
+    savePartnerProfile({ name, age, avatar, interests, personality, dislikes, note })
     setSaved(true)
     setTimeout(() => { setSaved(false); navigate(-1) }, 900)
+  }
+
+  const handleClear = () => {
+    setName(''); setAge(''); setAvatar('👩')
+    setInterests([]); setPersonality([]); setDislikes([]); setNote('')
+    savePartnerProfile({})
   }
 
   return (
@@ -82,7 +92,7 @@ export default function PartnerProfile() {
         backTo="/"
         action={
           <button
-            onClick={() => { setName(''); setAge(''); setAvatar('👩'); setInterests([]); setPersonality([]); setDislikes([]); setNote('') }}
+            onClick={handleClear}
             className="w-9 h-9 flex items-center justify-center rounded-xl active:scale-90 transition-transform"
             style={{ background: 'rgba(255,255,255,0.75)', border: '1px solid rgba(209,213,219,0.5)' }}
           >
