@@ -3,7 +3,7 @@
  *  - guestMode   : "Rādīt viņai" — hides planning details, shows clean plan
  *  - partnerProfile : persisted to localStorage so RescueMode can access it
  */
-import { createContext, useContext, useState, useCallback } from 'react'
+import { createContext, useContext, useState, useCallback, useEffect } from 'react'
 
 const PROFILE_KEY = 'celagars_partner'
 const GUEST_KEY   = 'celagars_guest'
@@ -23,6 +23,9 @@ const AppContext = createContext({
   toggleGuestMode: () => {},
   partnerProfile: DEFAULT_PROFILE,
   savePartnerProfile: () => {},
+  drawerOpen: false,
+  openDrawer: () => {},
+  closeDrawer: () => {},
 })
 
 export function AppProvider({ children }) {
@@ -30,6 +33,7 @@ export function AppProvider({ children }) {
     () => localStorage.getItem(GUEST_KEY) === 'true'
   )
   const [partnerProfile, setPartnerProfile] = useState(loadProfile)
+  const [drawerOpen, setDrawerOpen] = useState(false)
 
   const toggleGuestMode = useCallback(() => {
     setGuestMode((v) => {
@@ -44,8 +48,22 @@ export function AppProvider({ children }) {
     localStorage.setItem(PROFILE_KEY, JSON.stringify(profile))
   }, [])
 
+  const openDrawer  = useCallback(() => setDrawerOpen(true),  [])
+  const closeDrawer = useCallback(() => setDrawerOpen(false), [])
+
+  // Prevent body scroll when drawer is open
+  useEffect(() => {
+    if (drawerOpen) document.body.style.overflow = 'hidden'
+    else            document.body.style.overflow = ''
+    return () => { document.body.style.overflow = '' }
+  }, [drawerOpen])
+
   return (
-    <AppContext.Provider value={{ guestMode, toggleGuestMode, partnerProfile, savePartnerProfile }}>
+    <AppContext.Provider value={{
+      guestMode, toggleGuestMode,
+      partnerProfile, savePartnerProfile,
+      drawerOpen, openDrawer, closeDrawer,
+    }}>
       {children}
     </AppContext.Provider>
   )

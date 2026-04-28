@@ -126,6 +126,21 @@ export function citiesWithinRadius(startName, maxKm, direction = 'all') {
 export const TRANSPORT_SPEEDS = { car: 80, public: 40, bike: 15, walk: 5 }
 
 /**
+ * Maximum sensible travel distance for a given set of transport modes.
+ * Used to cap the user's maxDistance slider — there's no point walking 50 km.
+ *   walk   → 3 km   (city neighbourhood)
+ *   bike   → 15 km  (urban area)
+ *   public → 60 km  (regional bus/train)
+ *   car    → 200 km (all Latvia)
+ */
+export function getTransportEffectiveRadius(transport = []) {
+  if (transport.includes('car'))    return 200
+  if (transport.includes('public')) return 60
+  if (transport.includes('bike'))   return 15
+  return 3
+}
+
+/**
  * Pick the fastest available mode from a transport array.
  * Falls back to walking if the array is empty or unrecognised.
  */

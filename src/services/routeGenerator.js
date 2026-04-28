@@ -1,38 +1,50 @@
 /**
  * AI-powered route generator using Google Gemini.
  *
- * Budget is enforced at TWO levels:
- *   1. Prompt-level  — stated clearly (in English for better instruction-following)
- *      multiple times in the prompt.
- *   2. Client-level  — enforceBudget() removes stops that push the total over
- *      the limit even if the model ignores the prompt constraint.
+ * Constraints enforced at every level:
  *
- * Location is enforced at TWO levels:
- *   1. Prompt-level  — start city, max radius, allowed city list, and an explicit
- *      rule against mixing geographically distant destinations.
- *   2. Client-level  — static fallback pool is pre-filtered by haversine distance
- *      and compass direction before any stop is selected.
+ *  1. TRANSPORT-AWARE RADIUS
+ *     Effective radius = min(user slider, transport max)
+ *       walk=3 km · bike=15 km · public=60 km · car=200 km
+ *     This is sent to Gemini AND used to pre-filter the static pool.
  *
- * Falls back to a static curated pool (also budget + location filtered) when:
- *   - VITE_GEMINI_API_KEY is absent
- *   - The API call fails / response is unparseable
- *   - Client-side budget enforcement removes every AI-generated stop
+ *  2. DURATION-AWARE STOP COUNT
+ *     ≤1.5 h → 1–2 stops · ≤3 h → 2–3 · ≤5 h → 3–4 · ≤7 h → 4–5 · >7 h → 5–6
+ *     Gemini is told the exact range; pool selection honours the max.
+ *
+ *  3. HARD BUDGET CEILING
+ *     Stated in the prompt (in English for better instruction-following).
+ *     Client-side enforceBudget() removes stops that push total over limit
+ *     regardless of what Gemini returns.
+ *
+ *  4. GEOGRAPHIC COHERENCE
+ *     Prompt: all stops within effective radius of start, no stop more than
+ *     15 km from any other stop.
+ *     Pool: filterPoolByLocation uses haversine + coherence clustering.
+ *
+ *  Falls back to the static curated pool when:
+ *    – VITE_GEMINI_API_KEY is absent
+ *    – API call fails or response is un-parseable
+ *    – Budget enforcement removes every AI-generated stop
  */
 
-import { haversineKm, getCityCoords, citiesWithinRadius } from '../utils/geography'
+import {
+  haversineKm,
+  getCityCoords,
+  citiesWithinRadius,
+  getTransportEffectiveRadius,
+} from '../utils/geography'
 
 const API_KEY  = import.meta.env.VITE_GEMINI_API_KEY
 const MODEL    = 'gemini-2.0-flash'
 const BASE_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`
 
 /* ─── Static fallback pools ─────────────────────────────────────────────────
- *
- * Each entry carries:
- *   p       — natural-flow priority (lower = earlier in a typical day)
- *   location — canonical city name (must match CITY_DATA names in geography.js)
- *   coords   — {lat,lon} for distance filtering (same as CITY_DATA entry)
- *   cost     — realistic EUR cost (integer); 0 = free
- *
+ * Each entry:
+ *   p        — natural-flow priority (lower = earlier in the day)
+ *   location — canonical city name (must match CITY_DATA in geography.js)
+ *   coords   — {lat,lon} for distance filtering
+ *   cost     — realistic EUR (integer); 0 = free
  * ─────────────────────────────────────────────────────────────────────────── */
 
 const DATE_POOL = [
@@ -47,14 +59,14 @@ const DATE_POOL = [
     cost: 0,  tags: ['Bezmaksas', 'Romantisks'] },
 
   { p: 3,  location: 'Rīga',   coords: { lat: 56.946, lon: 24.105 },
-    duration: '45 min',  icon: '🛍️', title: 'Rīgas Centrāltirgus — ziedu paviljons',
+    duration: '45 min',  icon: '🛍️', title: 'Rīgas Centrāltirgus',
     desc: 'Eiropa lielākais tirgus — svaigi sezonas ziedi un vietējie produkti mājīgā gaisotnē.',
     cost: 0,  tags: ['Bezmaksas', 'Kultūra'] },
 
   { p: 4,  location: 'Rīga',   coords: { lat: 56.946, lon: 24.105 },
-    duration: '30 min',  icon: '⛪', title: 'Sv. Jāņa Baznīca',
-    desc: 'Gotikas dārgums Vecrīgas sirdī — simboliska ieejas maksa, neaizmirstams skats uz jumtiem.',
-    cost: 3,  tags: ['Kultūra', 'Lēts'] },
+    duration: '30 min',  icon: '⛪', title: 'Sv. Pētera baznīca — tornis',
+    desc: 'Panorāma no 72 metru augstuma pār sarkaniem jumtiem — viena no labākajām Rīgas skatuves.',
+    cost: 9,  tags: ['Kultūra', 'Romantisks'] },
 
   { p: 5,  location: 'Rīga',   coords: { lat: 56.946, lon: 24.105 },
     duration: '1 st.',   icon: '☕', title: 'Kafija "Rocket Bean Roastery"',
@@ -62,39 +74,39 @@ const DATE_POOL = [
     cost: 8,  tags: ['Kafija', 'Romantisks'] },
 
   { p: 6,  location: 'Rīga',   coords: { lat: 56.946, lon: 24.105 },
-    duration: '30 min',  icon: '🌆', title: 'Vakara skats no Sv. Pētera torņa',
-    desc: 'Pilsētas panorāma krēslā no 72 metru augstuma — neaizmirstams brīdis diviem.',
-    cost: 9,  tags: ['Romantisks', 'Unikāls'] },
-
-  { p: 7,  location: 'Rīga',   coords: { lat: 56.946, lon: 24.105 },
     duration: '1 st.',   icon: '🖼️', title: 'Latvijas Nacionālais mākslas muzejs',
     desc: 'Latvijas lielākā mākslas kolekcija — impresionisms un nacionālā romantika skaistā ēkā.',
     cost: 6,  tags: ['Kultūra', 'Māksla'] },
 
-  { p: 8,  location: 'Rīga',   coords: { lat: 56.946, lon: 24.105 },
+  { p: 7,  location: 'Rīga',   coords: { lat: 56.946, lon: 24.105 },
     duration: '1.5 st.', icon: '🍽️', title: 'Vakariņas "3 Pavāri"',
     desc: 'Latvijas virtuve mūsdienīgā interpretācijā — mājīga gaisotne un vietēji sezonas produkti.',
     cost: 35, tags: ['Gastro', 'Romantisks'] },
 
-  { p: 9,  location: 'Rīga',   coords: { lat: 56.946, lon: 24.105 },
+  { p: 8,  location: 'Rīga',   coords: { lat: 56.946, lon: 24.105 },
     duration: '1.5 st.', icon: '🍷', title: 'Vakariņas "Folkklubs Ata Dubults"',
     desc: 'Latvju virtuves dārgumi modernā iesaiņojumā. Rezervēt galdiņu iepriekš.',
     cost: 45, tags: ['Gastro', 'Intīms'] },
 
-  { p: 10, location: 'Rīga',   coords: { lat: 56.946, lon: 24.105 },
+  { p: 9,  location: 'Rīga',   coords: { lat: 56.946, lon: 24.105 },
     duration: '1 st.',   icon: '🎭', title: 'Latvijas Nacionālā teātra izrāde',
     desc: 'Latvijas prestižākais teātris ar klasikas un mūsdienu izrādēm Brīvības bulvārī.',
     cost: 20, tags: ['Kultūra', 'Romantisks'] },
 
-  { p: 11, location: 'Rīga',   coords: { lat: 56.946, lon: 24.105 },
+  { p: 10, location: 'Rīga',   coords: { lat: 56.946, lon: 24.105 },
     duration: '1 st.',   icon: '🍸', title: 'Kokteiļi "Skyline Bar"',
     desc: 'Rīgas augstākā bāra pilsētas panorāma vakarā — ideāla dienas nobeiguma vieta.',
     cost: 25, tags: ['Romantisks', 'Premium'] },
+
+  { p: 11, location: 'Jūrmala', coords: { lat: 56.968, lon: 23.771 },
+    duration: '1.5 st.', icon: '🌊', title: 'Rietumu saullēkts Jūrmalā',
+    desc: 'Majori pludmale vakarā — priežu gaiss un viļņi. 30 min ar vilcienu no Rīgas.',
+    cost: 3,  tags: ['Romantisks', 'Daba'] },
 ]
 
 const ACTIVITY_POOL = [
   { p: 1,  location: 'Sigulda', coords: { lat: 57.153, lon: 24.853 },
-    duration: '2 st.',   icon: '🌿', title: 'Gauja Nacionālais Parks — Velnala taka',
+    duration: '2 st.',   icon: '🌿', title: 'Velnala taka — Gauja NP',
     desc: 'Latvijas lielākā nacionālā parka ikoniskākā taka — smilšakmens atsegumi un Gaujas ieleja.',
     cost: 0,  tags: ['Daba', 'Bezmaksas'] },
 
@@ -104,13 +116,13 @@ const ACTIVITY_POOL = [
     cost: 0,  tags: ['Pludmale', 'Bezmaksas'] },
 
   { p: 3,  location: 'Ķemeri', coords: { lat: 56.925, lon: 23.490 },
-    duration: '2.5 st.', icon: '🏊', title: 'Ķemeru Nacionālais Parks — Kaniera ezers',
+    duration: '2.5 st.', icon: '🏊', title: 'Ķemeru NP — Kaniera ezers',
     desc: 'Miera ūdeņi, bebru dambji un purva taciņas Ķemeru nacionālajā parkā.',
     cost: 0,  tags: ['Daba', 'Bezmaksas'] },
 
   { p: 4,  location: 'Rīga',   coords: { lat: 56.990, lon: 24.234 },
     duration: '2 st.',   icon: '🏡', title: 'Latvijas Brīvdabas muzejs',
-    desc: 'Latvijas lauku arhitektūra dzīvā apkārtnes — 118 vēsturiskas ēkas Juglas ezera krastā.',
+    desc: '118 vēsturiskas ēkas Juglas ezera krastā — Latvijas lauku arhitektūra dzīvā.',
     cost: 5,  tags: ['Kultūra', 'Vēsture'] },
 
   { p: 5,  location: 'Rīga',   coords: { lat: 56.946, lon: 24.105 },
@@ -119,8 +131,8 @@ const ACTIVITY_POOL = [
     cost: 6,  tags: ['Māksla', 'Kultūra'] },
 
   { p: 6,  location: 'Sigulda', coords: { lat: 57.153, lon: 24.853 },
-    duration: '1.5 st.', icon: '🏰', title: 'Turaidas Pils Komplekss',
-    desc: 'Viduslaiku sarkanā pils ar izstādēm un skatu laukumu pār zeltaino Gaujas leju.',
+    duration: '1.5 st.', icon: '🏰', title: 'Turaidas pils komplekss',
+    desc: 'Viduslaiku sarkanā pils ar izstādēm un skatu laukumu pār Gaujas leju.',
     cost: 7,  tags: ['Vēsture', 'Kultūra'] },
 
   { p: 7,  location: 'Rīga',   coords: { lat: 56.946, lon: 24.105 },
@@ -130,35 +142,35 @@ const ACTIVITY_POOL = [
 
   { p: 8,  location: 'Sigulda', coords: { lat: 57.153, lon: 24.853 },
     duration: '45 min',  icon: '🍲', title: 'Pusdienas "Aparjods" Siguldā',
-    desc: '"Aparjods" — krāsns maize, vietējā sūra un karsts zirņu zupa paša centrā.',
+    desc: 'Krāsns maize, vietējā sūra un karsts zirņu zupa paša centrā.',
     cost: 15, tags: ['Ēdiens', 'Vietējais'] },
 
   { p: 9,  location: 'Sigulda', coords: { lat: 57.153, lon: 24.853 },
     duration: '1 st.',   icon: '🎿', title: 'Zipline "Tarzāns" pāri Gaujai',
-    desc: 'Brauciens ar zipline pāri Gaujas upei — 42 metru augstums un 140 metru garums.',
+    desc: 'Brauciens ar zipline pāri Gaujas upei — 42 m augstums, 140 m garums.',
     cost: 15, tags: ['Adrenalīns', 'Sports'] },
 
   { p: 10, location: 'Sigulda', coords: { lat: 57.153, lon: 24.853 },
-    duration: '1.5 st.', icon: '🏒', title: 'Siguldas Bobsleja un Kamaniņu trase',
+    duration: '1.5 st.', icon: '🏒', title: 'Siguldas bobsleja trase',
     desc: 'Olimpiskā trase atvērta apmeklētājiem — kamaniņu brauciens pa ledu.',
     cost: 20, tags: ['Adrenalīns', 'Sports'] },
 
   { p: 11, location: 'Sigulda', coords: { lat: 57.153, lon: 24.853 },
     duration: '3 st.',   icon: '🛶', title: 'Kajakošana pa Gauju',
-    desc: 'Organizēts kajakošanas brauciens pa Gauju cauri nacionālajam parkam ar aprīkojumu.',
+    desc: 'Organizēts kajakošanas brauciens cauri nacionālajam parkam ar aprīkojumu.',
     cost: 30, tags: ['Sports', 'Daba'] },
 ]
 
-/* ─── Helpers ────────────────────────────────────────────────────────────── */
+/* ─── Pure helpers ───────────────────────────────────────────────────────── */
 
-/** Parse "1.5 st." → 90 min, "45 min" → 45 min, else → 60 min */
+/** Parse "1.5 st." → 90 min, "45 min" → 45, else → 60. */
 function parseMins(str = '') {
   const m = str.match(/(\d+(?:\.\d+)?)\s*(st|min)/)
   if (!m) return 60
   return m[2] === 'min' ? Number(m[1]) : Number(m[1]) * 60
 }
 
-/** Reassign sequential start times so they always flow logically. */
+/** Sequential start times — dates start 17:00, activities 10:00. */
 function assignTimes(stops, isDate) {
   let mins = (isDate ? 17 : 10) * 60
   return stops.map((stop) => {
@@ -171,8 +183,8 @@ function assignTimes(stops, isDate) {
 
 /**
  * Hard client-side budget enforcement.
- * Free stops (cost === 0) are never removed.
- * For budget === 0: all paid stops are dropped.
+ * budget=0 → only free stops.
+ * Free stops (cost===0) are always kept.
  */
 function enforceBudget(stops, budget) {
   if (budget === 0) return stops.filter((s) => (Number(s.cost) || 0) === 0)
@@ -186,24 +198,48 @@ function enforceBudget(stops, budget) {
 }
 
 /**
- * Filter pool stops by distance from startCoords ≤ maxDistanceKm.
- * Then enforce geographic coherence: if remaining stops span cities more
- * than 30 km apart, keep only the cluster closest to startCoords.
+ * How many stops fit in the given duration.
+ * Returns {min, max} for the AI prompt; `max` used to cap pool selection.
+ *
+ *   ≤1.5 h → 1–2   (one focused experience)
+ *   ≤3 h   → 2–3   (morning or afternoon outing)
+ *   ≤5 h   → 3–4   (half day)
+ *   ≤7 h   → 4–5   (full day)
+ *   >7 h   → 5–6   (long day / weekend)
+ */
+function getStopRange(durationHours) {
+  if (durationHours <= 1.5) return { min: 1, max: 2 }
+  if (durationHours <= 3)   return { min: 2, max: 3 }
+  if (durationHours <= 5)   return { min: 3, max: 4 }
+  if (durationHours <= 7)   return { min: 4, max: 5 }
+  return { min: 5, max: 6 }
+}
+
+/**
+ * Compute effective max distance = min(user slider, transport ceiling).
+ * Walking 50 km is nonsensical; this prevents it.
+ */
+function effectiveRadius(transport, userMaxKm) {
+  return Math.min(userMaxKm, getTransportEffectiveRadius(transport))
+}
+
+/**
+ * Filter pool to stops within maxDistanceKm of startCoords.
+ * Then enforce geographic coherence: if the remaining stops span cities
+ * more than 15 km apart, keep only the dominant cluster.
  */
 function filterPoolByLocation(pool, startCoords, maxDistanceKm) {
-  // Radius filter
   const nearby = pool.filter((stop) => {
-    const dist = haversineKm(startCoords.lat, startCoords.lon, stop.coords.lat, stop.coords.lon)
-    return dist <= maxDistanceKm
+    const d = haversineKm(startCoords.lat, startCoords.lon, stop.coords.lat, stop.coords.lon)
+    return d <= maxDistanceKm
   })
 
-  if (nearby.length === 0) return pool // nothing close — use everything as fallback
+  if (nearby.length === 0) return pool   // nothing close — use everything as fallback
 
-  // Step 2 — coherence: detect if stops span multiple distant cities
   const cities = [...new Set(nearby.map((s) => s.location))]
   if (cities.length <= 1) return nearby
 
-  // Check if any two cities are > 30 km apart
+  // Check if any two included cities are > 15 km apart
   const cityCoords = cities.map((name) => ({ name, coords: getCityCoords(name) }))
   let needsCluster = false
   outer: for (let i = 0; i < cityCoords.length; i++) {
@@ -212,27 +248,26 @@ function filterPoolByLocation(pool, startCoords, maxDistanceKm) {
         cityCoords[i].coords.lat, cityCoords[i].coords.lon,
         cityCoords[j].coords.lat, cityCoords[j].coords.lon,
       )
-      if (d > 30) { needsCluster = true; break outer }
+      if (d > 15) { needsCluster = true; break outer }
     }
   }
   if (!needsCluster) return nearby
 
-  // Pick the city with the most stops, tie-break by proximity to startCoords
+  // Keep only the cluster with the most stops; tie-break: closest to start
   const counts = {}
   nearby.forEach((s) => { counts[s.location] = (counts[s.location] || 0) + 1 })
   const best = Object.entries(counts).sort(([aName, aC], [bName, bC]) => {
     if (bC !== aC) return bC - aC
-    const aD = haversineKm(startCoords.lat, startCoords.lon, ...Object.values(getCityCoords(aName)))
-    const bD = haversineKm(startCoords.lat, startCoords.lon, ...Object.values(getCityCoords(bName)))
-    return aD - bD
+    const { lat: aLat, lon: aLon } = getCityCoords(aName)
+    const { lat: bLat, lon: bLon } = getCityCoords(bName)
+    return haversineKm(startCoords.lat, startCoords.lon, aLat, aLon) -
+           haversineKm(startCoords.lat, startCoords.lon, bLat, bLon)
   })[0][0]
 
   return nearby.filter((s) => s.location === best)
 }
 
-/**
- * Greedy budget-aware stop selection from a pre-filtered pool.
- */
+/** Greedy budget-aware stop selection from a pre-filtered, priority-sorted pool. */
 function selectFromPool(pool, budget, maxStops = 5) {
   let total = 0
   const result = []
@@ -242,7 +277,6 @@ function selectFromPool(pool, budget, maxStops = 5) {
     const cost = Number(stop.cost) || 0
     if (budget === 0 && cost > 0) continue
     if (cost === 0 || total + cost <= budget) {
-      // Strip internal fields before returning
       // eslint-disable-next-line no-unused-vars
       const { p, coords, ...clean } = stop
       result.push(clean)
@@ -251,36 +285,39 @@ function selectFromPool(pool, budget, maxStops = 5) {
   }
 
   if (result.length === 0) {
-    // Last resort: at least return free stops
     return pool
       .filter((s) => (Number(s.cost) || 0) === 0)
       .slice(0, 3)
       // eslint-disable-next-line no-unused-vars
       .map(({ p, coords, ...s }) => s)
   }
-
   return result
 }
 
 /* ─── Fallback builder ───────────────────────────────────────────────────── */
+
 function buildFallback(state) {
   const isDate      = state?.type === 'date'
   const budget      = state?.budget      ?? 999
+  const transport   = state?.transport   ?? []
+  const duration    = state?.duration    ?? 3
   const startPlace  = state?.startPlace  ?? { name: 'Rīga', lat: 56.946, lon: 24.105 }
-  const maxDistance = state?.maxDistance ?? 200
+  const userMaxKm   = state?.maxDistance ?? 200
   const pool        = isDate ? DATE_POOL : ACTIVITY_POOL
 
-  // Use provided coords if available, otherwise look up by name
   const startCoords = (startPlace.lat != null && startPlace.lon != null)
     ? { lat: startPlace.lat, lon: startPlace.lon }
     : getCityCoords(startPlace.name ?? 'Rīga')
 
-  const filtered = filterPoolByLocation(pool, startCoords, maxDistance)
-  const selected = selectFromPool(filtered, budget)
+  const maxKm       = effectiveRadius(transport, userMaxKm)
+  const { max }     = getStopRange(duration)
+  const filtered    = filterPoolByLocation(pool, startCoords, maxKm)
+  const selected    = selectFromPool(filtered, budget, max)
   return assignTimes(selected, isDate)
 }
 
 /* ─── Gemini route generator ─────────────────────────────────────────────── */
+
 export async function generateRoute(state) {
   if (!state) return buildFallback(state)
 
@@ -298,73 +335,89 @@ export async function generateRoute(state) {
     ? { lat: startPlace.lat, lon: startPlace.lon }
     : getCityCoords(startName)
 
-  // ── Location context for prompt ────────────────────────────
-  const allowedCities = citiesWithinRadius(startName, maxDistance)
-    .map((c) => (c.km === 0 ? c.name : `${c.name} (~${c.km} km)`))
-    .slice(0, 12) // keep prompt compact
+  // ── Effective constraints ──────────────────────────────────
+  const maxKm       = effectiveRadius(transport, maxDistance)
+  const stopRange   = getStopRange(duration)
 
-  const radiusLine = maxDistance >= 200
-    ? 'Radius: no restriction — all of Latvia is allowed.'
-    : `Radius: ${maxDistance} km from ${startName}.`
-  const citiesLine = allowedCities.length > 0
-    ? `Allowed cities/areas: ${allowedCities.join(', ')}.`
-    : ''
+  // Transport label for the prompt
+  const transportMaxLabels = {
+    walk: '3 km (walking — only nearby attractions)',
+    bike: '15 km (cycling — city and immediate suburbs)',
+    public: '60 km (public transit — regional)',
+    car: '200 km (car — all Latvia)',
+  }
+  const dominantTransport = transport.includes('car')    ? 'car'
+                          : transport.includes('public') ? 'public'
+                          : transport.includes('bike')   ? 'bike'
+                          : 'walk'
+  const transportRadiusNote = transportMaxLabels[dominantTransport]
+
+  // ── Allowed cities for this radius ────────────────────────
+  const allowedCities = citiesWithinRadius(startName, maxKm)
+    .map((c) => (c.km === 0 ? c.name : `${c.name} (~${c.km} km)`))
+    .slice(0, 10)
 
   // ── Budget lines ───────────────────────────────────────────
-  const budgetLabel = budget === 0 ? '€0 — FREE ONLY' : `€${budget}`
+  const budgetLabel = budget === 0 ? '€0 — FREE activities ONLY' : `€${budget}`
   const budgetLines = [
-    `🚨 BUDGET CONSTRAINT — MOST IMPORTANT RULE:`,
+    `🚨 HARD BUDGET RULE — MOST IMPORTANT:`,
     `   Total budget: ${budgetLabel}`,
-    `   The SUM of ALL "cost" fields MUST NOT exceed €${budget}.`,
-    `   Each "cost" = realistic non-negative integer EUR. Free = 0.`,
+    `   SUM of ALL "cost" fields MUST NOT exceed €${budget}.`,
+    `   "cost" = realistic non-negative integer EUR. Free = 0.`,
     budget === 0
-      ? `   ALL stops MUST have cost: 0. Any stop with cost > 0 is FORBIDDEN.`
+      ? `   EVERY stop MUST have cost: 0. Paid stops are FORBIDDEN.`
       : budget <= 15
-        ? `   Budget is very tight — use free parks, walks, viewpoints only.`
+        ? `   Very tight — use free parks, viewpoints, walks only.`
         : budget <= 40
-          ? `   Moderate budget — mix free and inexpensive (€5–15) stops.`
+          ? `   Moderate — mix free stops with 1–2 inexpensive (€5–15) options.`
           : null,
   ].filter(Boolean).join('\n')
 
-  // ── Type / preference lines ────────────────────────────────
+  // ── Type / preference context ──────────────────────────────
   const contextLines = isDate
     ? [
         `Type: Romantic date${partnerName ? ` with ${partnerName}` : ''}.`,
         `Vibe: ${vibes.join(', ') || 'romantic'}.`,
-        mood && mood !== 'neutral' ? `Partner mood today: ${mood}.` : null,
+        mood && mood !== 'neutral' ? `Partner mood today: ${mood} — adjust suggestions accordingly.` : null,
       ].filter(Boolean)
     : [
-        `Type: Group activity.`,
+        `Type: Group activity outing.`,
         `Interests: ${interests.join(', ') || 'nature'}.`,
-        hasKids ? `Children present — keep activities family-friendly.` : null,
-        hasDog  ? `Dog coming — include dog-friendly outdoor venues.`   : null,
+        hasKids ? `Children present — all activities MUST be family-friendly.` : null,
+        hasDog  ? `Dog coming — only dog-friendly outdoor venues.` : null,
       ].filter(Boolean)
 
-  const prompt = `You are an expert Latvia tourism guide. Create a personalised itinerary in Latvian.
+  const prompt = `You are an expert Latvia tourism guide creating a ${isDate ? 'romantic date' : 'group activity'} itinerary.
 
 ${contextLines.join('\n')}
 Transport: ${transport.join(', ') || 'walk'}.
-Duration: ~${duration} hours.
+Duration: ${duration} hours total.
 
-📍 LOCATION CONSTRAINTS (MANDATORY):
-   Start: ${startName}.
-   ${radiusLine}
-   ${citiesLine}
-   ALL stops MUST be within ${maxDistance >= 200 ? 'Latvia' : `${maxDistance} km of ${startName}`}.
-   NEVER mix stops from opposite ends of Latvia in one route.
-   All stops must be in the same geographic area — within ~30 km of each other.
+🗺️ LOCATION RULES (STRICTLY MANDATORY):
+   Start point: ${startName}
+   Transport type: ${transport.join('/')} → max radius ${transportRadiusNote}
+   Hard distance limit: ${maxKm} km from ${startName}.
+   Allowed cities/areas: ${allowedCities.length > 0 ? allowedCities.join(', ') : 'Only within ' + maxKm + ' km of ' + startName}.
+   ❌ NEVER suggest places outside ${maxKm} km from ${startName}.
+   ❌ NEVER mix stops from opposite ends of Latvia.
+   ❌ No stop may be more than 15 km from any other stop in the route.
+   ✅ All stops must form a logical, walkable/driveable cluster.
+
+⏱️ STOP COUNT RULE:
+   With ${duration} hours available, include EXACTLY ${stopRange.min}–${stopRange.max} stops.
+   Each stop needs realistic duration. The total duration of all stops must fit in ${duration} hours.
 
 ${budgetLines}
 
-Each stop needs a "location" field with the Latvian city name (e.g. "Rīga", "Sigulda").
+Each stop MUST have a "location" field with the Latvian city/district name (e.g. "Rīga", "Sigulda", "Jūrmala").
 
-Return ONLY a valid JSON array (no markdown, no extra text) with 3–5 stops in Latvian:
+Return ONLY a valid JSON array (no markdown, no text outside brackets):
 [
   {
     "time": "17:00",
     "duration": "1 st.",
     "title": "Vietas nosaukums latviski",
-    "desc": "2–3 teikumu apraksts latviešu valodā.",
+    "desc": "2–3 teikumu apraksts latviešu valodā. Konkrēta adrese vai orientieri.",
     "icon": "🎭",
     "cost": 0,
     "location": "Rīga",
@@ -372,7 +425,11 @@ Return ONLY a valid JSON array (no markdown, no extra text) with 3–5 stops in 
   }
 ]
 
-Final check: sum of all cost values ≤ €${budget}.${budget === 0 ? ' Every cost must be exactly 0.' : ''}`
+✅ Final checks:
+  – Stop count: ${stopRange.min}–${stopRange.max}
+  – All stops within ${maxKm} km of ${startName}
+  – No stop more than 15 km from neighbours
+  – Sum of costs ≤ €${budget}${budget === 0 ? ' (every cost must be exactly 0)' : ''}`
 
   if (!API_KEY) return buildFallback(state)
 
@@ -382,7 +439,7 @@ Final check: sum of all cost values ≤ €${budget}.${budget === 0 ? ' Every co
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.4, responseMimeType: 'text/plain' },
+        generationConfig: { temperature: 0.35, responseMimeType: 'text/plain' },
       }),
     })
 
@@ -393,7 +450,7 @@ Final check: sum of all cost values ≤ €${budget}.${budget === 0 ? ' Every co
     const rawText = parts.map((p) => p.text ?? '').join('')
 
     const clean = rawText
-      .replace(/\[\d+(?:,\s*\d+)*\]/g, '')
+      .replace(/\[\d+(?:,\s*\d+)*\]/g, '')   // remove citation markers [1], [2,3]
       .replace(/```(?:json)?/g, '')
       .trim()
 
@@ -403,12 +460,25 @@ Final check: sum of all cost values ≤ €${budget}.${budget === 0 ? ' Every co
     const parsed = JSON.parse(match[0])
     if (!Array.isArray(parsed) || parsed.length === 0) throw new Error('Empty array')
 
+    // Normalise costs
     const normalised = parsed.map((s) => ({ ...s, cost: Math.round(Number(s.cost) || 0) }))
-    const enforced   = enforceBudget(normalised, budget)
 
+    // Client-side geographic filter: drop stops outside effective radius
+    const geoFiltered = normalised.filter((s) => {
+      if (!s.location) return true  // no location field → trust the AI
+      const coords = getCityCoords(s.location)
+      const dist   = haversineKm(startCoords.lat, startCoords.lon, coords.lat, coords.lon)
+      return dist <= maxKm + 5  // 5 km tolerance for suburb/district names
+    })
+
+    // Hard budget enforcement
+    const enforced = enforceBudget(geoFiltered.length > 0 ? geoFiltered : normalised, budget)
     if (enforced.length === 0) return buildFallback(state)
 
-    return assignTimes(enforced, isDate)
+    // Trim to stop count
+    const trimmed = enforced.slice(0, stopRange.max)
+
+    return assignTimes(trimmed, isDate)
 
   } catch (err) {
     console.warn('[routeGenerator] Gemini failed, using fallback:', err.message)

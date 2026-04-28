@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Heart, Users, Compass, Star, MapPin, RefreshCw, Zap, Eye, EyeOff, Lightbulb } from 'lucide-react'
+import { Heart, Users, Compass, Star, MapPin, RefreshCw, Zap, Eye, EyeOff, Lightbulb, Menu } from 'lucide-react'
 import BlobBackground from '../components/BlobBackground'
 import EventCard from '../components/EventCard'
 import { fetchWeekendEvents } from '../services/gemini'
@@ -9,7 +9,7 @@ import { getSeasonLabel } from '../utils/seasonal'
 
 export default function Home() {
   const navigate = useNavigate()
-  const { guestMode, toggleGuestMode } = useApp()
+  const { guestMode, toggleGuestMode, openDrawer } = useApp()
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Labrīt' : hour < 18 ? 'Labdien' : 'Labvakar'
   const seasonLabel = getSeasonLabel()
@@ -45,7 +45,7 @@ export default function Home() {
           {/* Guest mode toggle */}
           <button
             onClick={toggleGuestMode}
-            className={`w-10 h-10 flex items-center justify-center rounded-2xl active:scale-90 transition-all`}
+            className="w-10 h-10 flex items-center justify-center rounded-2xl active:scale-90 transition-all"
             style={{
               background: guestMode ? 'rgba(249,115,22,0.12)' : 'rgba(255,255,255,0.75)',
               border: guestMode ? '1px solid rgba(249,115,22,0.35)' : '1px solid rgba(255,255,255,0.90)',
@@ -59,17 +59,15 @@ export default function Home() {
               : <EyeOff size={17} className="text-gray-400" />
             }
           </button>
-          {/* Partner profile */}
-          {!guestMode && (
-            <button
-              onClick={() => navigate('/partner-profile')}
-              className="w-10 h-10 flex items-center justify-center rounded-2xl active:scale-90 transition-transform"
-              style={{ background: 'rgba(255,255,255,0.75)', border: '1px solid rgba(255,255,255,0.90)', boxShadow: '0 4px 16px rgba(0,0,0,0.08)' }}
-              aria-label="Partnera profils"
-            >
-              <span className="text-lg">👤</span>
-            </button>
-          )}
+          {/* Hamburger menu */}
+          <button
+            onClick={openDrawer}
+            className="w-10 h-10 flex items-center justify-center rounded-2xl active:scale-90 transition-transform"
+            style={{ background: 'rgba(255,255,255,0.75)', border: '1px solid rgba(255,255,255,0.90)', boxShadow: '0 4px 16px rgba(0,0,0,0.08)' }}
+            aria-label="Navigācija"
+          >
+            <Menu size={18} className="text-gray-600" />
+          </button>
         </div>
       </div>
 
