@@ -54,9 +54,8 @@ export default function ActivityPlanner() {
   const [budget,        setBudget]        = useState(50)
   const [hasKids,       setHasKids]       = useState(false)
   const [hasDog,        setHasDog]        = useState(false)
-  const [startLocation, setStartLocation] = useState('Rīga')
+  const [startPlace,    setStartPlace]    = useState({ name: 'Rīga', lat: 56.946, lon: 24.105 })
   const [maxDistance,   setMaxDistance]   = useState(100)
-  const [direction,     setDirection]     = useState('all')
 
   const toggleArr = (setter) => (v) =>
     setter((p) => p.includes(v) ? p.filter((x) => x !== v) : [...p, v])
@@ -68,7 +67,7 @@ export default function ActivityPlanner() {
       state: {
         type: 'activity', group, peopleCount, transport, interests,
         duration, budget, hasKids, hasDog,
-        startLocation, maxDistance, direction,
+        startPlace, maxDistance,
       },
     })
 
@@ -149,9 +148,8 @@ export default function ActivityPlanner() {
 
         {/* ── Start location + distance + direction ── */}
         <LocationSection
-          startLocation={startLocation} setStartLocation={setStartLocation}
-          maxDistance={maxDistance}     setMaxDistance={setMaxDistance}
-          direction={direction}         setDirection={setDirection}
+          startPlace={startPlace}   setStartPlace={setStartPlace}
+          maxDistance={maxDistance} setMaxDistance={setMaxDistance}
         />
 
         {/* ── Transport ── */}

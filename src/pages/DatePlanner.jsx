@@ -58,9 +58,8 @@ export default function DatePlanner() {
   const [partnerName,    setPartnerName]    = useState(partnerProfile?.name ?? '')
   const [partnerAge,     setPartnerAge]     = useState(partnerProfile?.age  ?? '')
   const [mood,           setMood]           = useState('neutral')
-  const [startLocation,  setStartLocation]  = useState('Rīga')
+  const [startPlace,     setStartPlace]     = useState({ name: 'Rīga', lat: 56.946, lon: 24.105 })
   const [maxDistance,    setMaxDistance]    = useState(50)
-  const [direction,      setDirection]      = useState('all')
 
   const toggleArr = (setter) => (v) =>
     setter((p) => p.includes(v) ? p.filter((x) => x !== v) : [...p, v])
@@ -73,7 +72,7 @@ export default function DatePlanner() {
     navigate('/route-result', {
       state: {
         type: 'date', dateType, transport, vibes, duration, budget,
-        partnerName, mood, startLocation, maxDistance, direction,
+        partnerName, mood, startPlace, maxDistance,
       },
     })
 
@@ -139,9 +138,8 @@ export default function DatePlanner() {
 
         {/* ── Start location + distance + direction ── */}
         <LocationSection
-          startLocation={startLocation} setStartLocation={setStartLocation}
-          maxDistance={maxDistance}     setMaxDistance={setMaxDistance}
-          direction={direction}         setDirection={setDirection}
+          startPlace={startPlace}   setStartPlace={setStartPlace}
+          maxDistance={maxDistance} setMaxDistance={setMaxDistance}
         />
 
         {/* ── Date type ── */}

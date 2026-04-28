@@ -19,10 +19,7 @@
  *   - Client-side budget enforcement removes every AI-generated stop
  */
 
-import {
-  haversineKm, getBearing, cardinalFromBearing,
-  getCityCoords, citiesWithinRadius,
-} from '../utils/geography'
+import { haversineKm, getCityCoords, citiesWithinRadius } from '../utils/geography'
 
 const API_KEY  = import.meta.env.VITE_GEMINI_API_KEY
 const MODEL    = 'gemini-2.0-flash'
@@ -189,23 +186,15 @@ function enforceBudget(stops, budget) {
 }
 
 /**
- * Filter pool stops by:
- *   1. Distance from startCoords ≤ maxDistanceKm
- *   2. Compass direction (if not 'all')
- *
+ * Filter pool stops by distance from startCoords ≤ maxDistanceKm.
  * Then enforce geographic coherence: if remaining stops span cities more
  * than 30 km apart, keep only the cluster closest to startCoords.
  */
-function filterPoolByLocation(pool, startCoords, maxDistanceKm, direction) {
-  // Step 1 — radius + direction filter
+function filterPoolByLocation(pool, startCoords, maxDistanceKm) {
+  // Radius filter
   const nearby = pool.filter((stop) => {
     const dist = haversineKm(startCoords.lat, startCoords.lon, stop.coords.lat, stop.coords.lon)
-    if (dist > maxDistanceKm) return false
-    if (direction !== 'all' && dist > 8) {
-      const bearing  = getBearing(startCoords.lat, startCoords.lon, stop.coords.lat, stop.coords.lon)
-      if (cardinalFromBearing(bearing) !== direction) return false
-    }
-    return true
+    return dist <= maxDistanceKm
   })
 
   if (nearby.length === 0) return pool // nothing close — use everything as fallback
@@ -277,14 +266,17 @@ function selectFromPool(pool, budget, maxStops = 5) {
 function buildFallback(state) {
   const isDate      = state?.type === 'date'
   const budget      = state?.budget      ?? 999
-  const startName   = state?.startLocation ?? 'Rīga'
-  const maxDistance = state?.maxDistance  ?? 200
-  const direction   = state?.direction    ?? 'all'
+  const startPlace  = state?.startPlace  ?? { name: 'Rīga', lat: 56.946, lon: 24.105 }
+  const maxDistance = state?.maxDistance ?? 200
   const pool        = isDate ? DATE_POOL : ACTIVITY_POOL
 
-  const startCoords  = getCityCoords(startName)
-  const filtered     = filterPoolByLocation(pool, startCoords, maxDistance, direction)
-  const selected     = selectFromPool(filtered, budget)
+  // Use provided coords if available, otherwise look up by name
+  const startCoords = (startPlace.lat != null && startPlace.lon != null)
+    ? { lat: startPlace.lat, lon: startPlace.lon }
+    : getCityCoords(startPlace.name ?? 'Rīga')
+
+  const filtered = filterPoolByLocation(pool, startCoords, maxDistance)
+  const selected = selectFromPool(filtered, budget)
   return assignTimes(selected, isDate)
 }
 
@@ -296,25 +288,24 @@ export async function generateRoute(state) {
     type, transport = [], vibes = [], interests = [],
     duration = 3, budget = 60,
     partnerName, mood, hasKids, hasDog,
-    startLocation = 'Rīga',
-    maxDistance   = 200,
-    direction     = 'all',
+    startPlace = { name: 'Rīga', lat: 56.946, lon: 24.105 },
+    maxDistance = 200,
   } = state
 
-  const isDate = type === 'date'
+  const isDate      = type === 'date'
+  const startName   = startPlace.name ?? 'Rīga'
+  const startCoords = (startPlace.lat != null && startPlace.lon != null)
+    ? { lat: startPlace.lat, lon: startPlace.lon }
+    : getCityCoords(startName)
 
   // ── Location context for prompt ────────────────────────────
-  const allowedCities = citiesWithinRadius(startLocation, maxDistance, direction)
+  const allowedCities = citiesWithinRadius(startName, maxDistance)
     .map((c) => (c.km === 0 ? c.name : `${c.name} (~${c.km} km)`))
     .slice(0, 12) // keep prompt compact
 
-  const directionLabels = { N: 'north', E: 'east', S: 'south', W: 'west' }
   const radiusLine = maxDistance >= 200
     ? 'Radius: no restriction — all of Latvia is allowed.'
-    : `Radius: ${maxDistance} km from ${startLocation}.`
-  const directionLine = direction !== 'all'
-    ? `Direction: ${directionLabels[direction] ?? direction} of ${startLocation} only.`
-    : ''
+    : `Radius: ${maxDistance} km from ${startName}.`
   const citiesLine = allowedCities.length > 0
     ? `Allowed cities/areas: ${allowedCities.join(', ')}.`
     : ''
@@ -356,11 +347,10 @@ Transport: ${transport.join(', ') || 'walk'}.
 Duration: ~${duration} hours.
 
 📍 LOCATION CONSTRAINTS (MANDATORY):
-   Start: ${startLocation}.
+   Start: ${startName}.
    ${radiusLine}
-   ${directionLine}
    ${citiesLine}
-   ALL stops MUST be within ${maxDistance >= 200 ? 'Latvia' : `${maxDistance} km of ${startLocation}`}.
+   ALL stops MUST be within ${maxDistance >= 200 ? 'Latvia' : `${maxDistance} km of ${startName}`}.
    NEVER mix stops from opposite ends of Latvia in one route.
    All stops must be in the same geographic area — within ~30 km of each other.
 

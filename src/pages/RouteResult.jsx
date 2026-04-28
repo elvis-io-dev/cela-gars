@@ -180,11 +180,15 @@ export default function RouteResult() {
   /* ── Travel time from start to first stop ── */
   const travelInfo = (() => {
     if (routeLoading || routeStops.length === 0) return null
-    const startName = state?.startLocation
-    if (!startName) return null
+    const startPlace = state?.startPlace
+    if (!startPlace) return null
+    const startName   = startPlace.name ?? 'Rīga'
     const firstStop   = routeStops[0]
     const destName    = firstStop.location || startName
-    const startCoords = getCityCoords(startName)
+    // Use provided coords when available, otherwise look up by city name
+    const startCoords = (startPlace.lat != null && startPlace.lon != null)
+      ? { lat: startPlace.lat, lon: startPlace.lon }
+      : getCityCoords(startName)
     const destCoords  = getCityCoords(destName)
     const distKm      = haversineKm(startCoords.lat, startCoords.lon, destCoords.lat, destCoords.lon)
     if (distKm < 2) return null   // same area — not worth showing
@@ -195,6 +199,7 @@ export default function RouteResult() {
       modeLabel: getTransportLabel(transport),
       modeIcon:  getTransportIcon(transport),
       destCity:  destName,
+      startName,
     }
   })()
 
@@ -205,8 +210,9 @@ export default function RouteResult() {
         title={isDate ? 'Randiņa maršruts' : 'Aktivitāšu maršruts'}
         subtitle={(() => {
           const parts = []
-          if (state?.startLocation && state.startLocation !== 'Rīga')
-            parts.push(`No ${state.startLocation}`)
+          const startName = state?.startPlace?.name
+          if (startName && startName !== 'Rīga')
+            parts.push(`No ${startName}`)
           if (state?.maxDistance && state.maxDistance < 200)
             parts.push(`${state.maxDistance} km`)
           if (budget !== null)
@@ -288,7 +294,7 @@ export default function RouteResult() {
             <span className="text-xl shrink-0">{travelInfo.modeIcon}</span>
             <div className="flex-1 min-w-0">
               <p className="text-xs font-semibold text-gray-800">
-                {state?.startLocation} → {travelInfo.destCity}
+                {travelInfo.startName} → {travelInfo.destCity}
               </p>
               <p className="text-xs text-gray-500 mt-0.5">
                 {travelInfo.timeStr} {travelInfo.modeLabel} · {travelInfo.distKm} km
